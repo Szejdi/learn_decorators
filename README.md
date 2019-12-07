@@ -143,7 +143,7 @@ def foo():
     print('I am real body of foo!')
 
 
->> help(foo)
+>>> help(foo)
 Help on function wrapper in module __main__:
 
 wrapper(*args, **kwargs)
@@ -164,3 +164,136 @@ def mydecorator(func: callable) -> callable:
         return func(*args, **kwargs)
     return wrapper
 ```
+## Lets do this again. But using class.
+Let's comeback to the "first class object" meaning.
+If functions are objects, we can use object instead of the function.
+Lets try to translate following piece of code into class approach.
+
+### From the beginning
+Once more lets try to implement very simple decorator, which print
+`__name__` attribute of original function.
+```python
+@mydecorator
+def foo():
+    ...
+```
+We know the actual call behind this. Just as reminder.
+```python
+def foo():
+    ...
+foo = mydecorator(foo)
+```
+Thinking about `mydecorator` as an object, we should implement the 
+`__init__` method, which will take our original function.
+```python
+class MyDecorator:
+    def __init__(self, func):
+        ...
+```
+But to execute our new function, we have to use `()` syntax one more time.
+Lets forget about the decorators and try to think what next code snippet
+will exactly do
+```python
+class Baz:
+    ...
+b = Baz()
+b()
+```
+It's pretty obvious that `b = Baz()` will invoke `__init__` function.
+The second line `b()` will invoke `__call__` method.  
+So the original function lands in `__init__` method and the actual execution
+is done in `__call__`. In this case we need to assign the original function
+to instance attribute, to be able to refer to it from the `__call__` method.
+```python
+class mydecorator:
+    def __init__(self, func):
+        self.func = func
+    
+    def __call__(self, *args, **kwargs):
+        print(self.func.__name__)
+        return self.func(*args, **kwargs)
+```
+### Lets improve! Parametrization.
+Once again our goal is to parametrize our decorator.
+Just to recall what we want to achieve, we want our decorator to print
+all listed attributes in decorator argument.
+```python
+@mydecorator(['__name__', '__module__'])
+def foo():
+    ...
+```
+We know that this code is equal to:
+```python
+def foo():
+    pass
+mydecorator(['__name__', '__module__'])(foo)
+```
+So in this case the `['__name__', '__module__']` argument is going to
+`__init__` method, and the `foo` function goes to the `__call__`.
+Right now we are missing the way to pass original argument of the `foo` function.  
+Executing our new function will be 3rd use of `()` on our object, so the
+return value of the `__call__` should be `callable`! Lets then return a new function
+declared inside of `__call__` method.
+```python
+class mydecorator:
+    def __init__(self, attrs_to_print):
+        self.attrs_to_print = attrs_to_print
+    
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            for attr in self.attrs_to_print:
+                print(getattr(func, attr, ''))
+            return func(*args, **kwargs)
+        return wrapper
+```
+And it's almost all.
+### Hey you! You lost metadata again!
+Unfortunately there are two separate approaches.
+#### Unparameterized
+In this case we need to use `functools.update_wrapper()` function, as there
+is no wrapper function that we can wrap with `functools.wraps()` which we already
+know.
+```python
+import functools
+
+
+class mydecorator:
+    def __init__(self, func):
+        self.func = func    
+        functools.update_wrapper(self, func)
+    
+    def __call__(self, *args, **kwargs):
+        print(self.func.__name__)
+        return self.func(*args, **kwargs)
+```
+#### Parametrized
+This is easier one, we have the `wrapper()` function so we do it in old way,
+using `@functools.wraps()` decorator on that.
+```python
+import functools
+
+
+class mydecorator:
+    def __init__(self, attrs_to_print):
+        self.attrs_to_print = attrs_to_print
+    
+    def __call__(self, func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attr in self.attrs_to_print:
+                print(getattr(func, attr, ''))
+            return func(*args, **kwargs)
+        return wrapper
+```
+### My IDE is screaming to me about PEP8 incompatibility!
+The PEP8 requires that class names should be in CamelCase, but on the other
+hand de decorators are usually in snake_case. How we can bring together those two
+rules which are excluding themselves? Here is the trick:
+```python
+class MyDecorator:
+    ...
+
+my_decorator = MyDecorator
+```
+And the thing which you are actually importing to other files should be 
+`my_decorator` variable.
