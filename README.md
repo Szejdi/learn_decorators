@@ -24,7 +24,7 @@ which is mandatory for above construction.
 
 So know, where we know, that decorators are not something magic,
 that is just a syntax sugar, we can start to build over own!
-  
+
 ## My very first decorator.
 Building our first decorator we encounter 2 other approaches.
 * Function Based Decorators
@@ -296,4 +296,55 @@ class MyDecorator:
 my_decorator = MyDecorator
 ```
 And the thing which you are actually importing to other files should be 
-`my_decorator` variable.
+`my_decorator` variable
+
+## Hmmm, that's nice, but I mostly use the OOP rather then pure functions.
+And I am happy that you do! In this section we will talk about building decorators
+for methods and even for the whole classes!
+### How to decorate single method?
+To decorate methods I'll use the class based approach.
+Let's try to reuse on of our previous decorators. Lets start with the simple
+one.  
+Lets try to execute following piece of code:
+```python
+import functools
+
+
+class mydecorator:
+    def __init__(self, func):
+        self.func = func    
+        functools.update_wrapper(self, func)
+    
+    def __call__(self, *args, **kwargs):
+        print(self.func.__name__)
+        return self.func(*args, **kwargs)
+
+
+class Foo:
+    @mydecorator
+    def baz(self):
+        print('Hallo folks.')
+
+foo = Foo()
+foo.baz()
+```
+This will raise an error.
+```
+TypeError: baz() missing 1 required positional argument: 'self'
+```
+So we've missed the `self` argument... That's pretty bad.  
+But of course there is a cure for that and it's name is... Descriptor.
+Descriptors are special objects which have to implement 3 methods:
+* `__get__`
+* `__set__`
+* `__delete__`
+
+Those objects are defining the dot `.` operator behaviour.  
+Lets see when particular method will be called:
+* `__get__`: `foo.baz()`
+* `__set__`: `foo.baz = 5`
+* `__delete__`: `del foo.baz`
+
+In context of decorators we should be interested only in `__get__` method,
+because it's the one that get invoked on actual method call.  
+The signature of this method is following: `__get__(self, obj, objtype)`, where `obj`
