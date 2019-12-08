@@ -347,4 +347,123 @@ Lets see when particular method will be called:
 
 In context of decorators we should be interested only in `__get__` method,
 because it's the one that get invoked on actual method call.  
-The signature of this method is following: `__get__(self, obj, objtype)`, where `obj`
+The signature of this method is following: `__get__(self, instance, owner)`, where `instance` is the object, which 
+attribute is get, and the owner is the type of the `instance`.  
+So if we can get access in `__get__` function to our instance, we should somehow combine the method with its 
+object. We can do that using another function from `functools` module which is `partial`.  
+```python
+import functools
+
+
+class mydecorator:
+    def __init__(self, func):
+        self.func = func    
+        functools.update_wrapper(self, func)
+    
+    def __call__(self, *args, **kwargs):
+        print(self.func.__name__)
+        return self.func(*args, **kwargs)
+    
+    def __get__(self, instance, owner):
+        return functools.partial(self, instance)
+
+
+class Foo:
+    @mydecorator
+    def baz(self):
+        print('Hallo folks.')
+
+foo = Foo()
+foo.baz()
+```
+The reason why we call `functools.partial(self, instance)` this instead of this `functools.partial(self.func, instance)`
+is because in the second one we could skip `__call__()` method and go directly for function execution.
+### Lets try to parameterize once again!
+We know the logic. We know the syntax. Just add a wrapper function. Use `functools.wraps()` instead of
+ `functools.update_wrapper()` and we are done.
+ ```python
+import functools
+
+
+class mydecorator:
+    def __init__(self, attrs_to_print):
+        self.attrs_to_print = attrs_to_print
+
+    def __call__(self, func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attr in self.attrs_to_print:
+                print(getattr(func, attr, ''))
+            return func(*args, **kwargs)
+
+        return wrapper
+    
+    def __get__(self, instance, owner):
+        return functools.partial(self, instance)
+
+```
+### That's nice! But you mentioned about class decorators, what are those and how they do behave?
+Alright I did. Class decorators are used to decorate all the methods in the class at once!
+Lets see how the usage looks:
+```python
+@my_class_decorator
+class Foo:
+    def baz(self):
+        print('Hallo folks')
+    def fuzz(self):
+        print('Bye bye folks')
+```
+And once more we need to understand what is going on here. Without decorators, it would look like this:
+```python
+class Foo:
+    def baz(self):
+        print('Hallo folks')
+    def fuzz(self):
+        print('Bye bye folks')
+Foo = my_class_decorator(Foo)
+```
+So mydecorator should now return the class! This class should behave in the same way that the original class,
+but should decorate methods. 
+We need to think what method is called each time we invoke method in classes. This function is called
+`__getattribute__`. We will use one of our previous decorators, to decorate method "on-call".
+```python
+import types
+import functools
+
+
+class mydecorator:
+    def __init__(self, func):
+        self.func = func    
+    
+    def __call__(self, *args, **kwargs):
+        print(self.func.__name__)
+        return self.func(*args, **kwargs)
+    
+    def __get__(self, instance, owner):
+        return functools.partial(self, instance)
+
+
+class MyClassDecorator:
+    class DecoratedClass:
+        def __init__(self, Klass, *args, **kwargs):
+            self.original_instance = Klass(*args, **kwargs)
+
+
+        def __getattribute__(self, item):
+            try:    
+                return super().__getattribute__(item)
+            except AttributeError:      
+                original_attr = self.original_instance.__getattribute__(item)
+                if isinstance(original_attr, types.MethodType):
+                    return mydecorator(original_attr)
+                return original_attr
+        
+    def __init__(self, Klass):
+        self.Klass = Klass
+        functools.update_wrapper(self.DecoratedClass, Klass)
+
+
+    def __call__(self, *args, **kwargs):
+        return self.DecoratedClass(self.Klass, *args, **kwargs)
+```
+### And it's too much to handle metadata...
